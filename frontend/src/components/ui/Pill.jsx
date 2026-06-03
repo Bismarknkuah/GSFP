@@ -1,0 +1,2 @@
+const TONES={forest:'bg-forest/10 text-forest',emerald:'bg-emerald/10 text-emerald',amber:'bg-amber/10 text-amber',rust:'bg-rust/10 text-rust',sage:'bg-sage/20 text-sage-700',stone:'bg-stone-100 text-stone-500',navy:'bg-navy/10 text-navy',gold:'bg-yellow-50 text-yellow-700',purple:'bg-purple-50 text-purple-700'};
+export default function Pill({children,tone='stone',className=''}){return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TONES[tone]||TONES.stone} ${className}`}>{children}</span>;}

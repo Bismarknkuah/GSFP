@@ -1,0 +1,11 @@
+const express = require('express');
+const multer  = require('multer');
+const ctrl    = require('../controllers/bulkUploadController');
+const { authenticate, requireRole } = require('../middleware/auth');
+const router  = express.Router();
+const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10*1024*1024 } });
+router.use(authenticate);
+router.get('/template',           ctrl.downloadTemplate);
+router.get('/payment-summary',    ctrl.paymentSummaryByLevel);
+router.post('/payments', requireRole('super_admin','national_admin','national_finance','regional_coordinator','regional_finance','district_coordinator','district_director','finance_officer'), upload.single('file'), ctrl.uploadPayments);
+module.exports = router;

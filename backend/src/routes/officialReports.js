@@ -1,0 +1,11 @@
+const express=require('express');
+const ctrl=require('../controllers/officialReportController');
+const {authenticate,scopeCheck}=require('../middleware/auth');
+const router=express.Router();
+router.use(authenticate,scopeCheck);
+router.get('/stats',          ctrl.stats);
+router.get('/',               ctrl.list);
+router.get('/:id',            ctrl.get);
+router.post('/',              ctrl.submit);
+router.post('/:id/action',    ctrl.action);
+module.exports=router;

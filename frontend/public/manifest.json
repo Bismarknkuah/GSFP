@@ -1,0 +1,13 @@
+{
+  "name": "Ghana School Feeding Programme",
+  "short_name": "GSFP",
+  "description": "National management platform for Ghana School Feeding Programme",
+  "theme_color": "#15493B",
+  "background_color": "#F9F6EF",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

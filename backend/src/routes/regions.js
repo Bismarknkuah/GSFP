@@ -1,0 +1,10 @@
+const express = require('express');
+const ctrl = require('../controllers/regionsController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/ghana', ctrl.ghanaRegions);
+router.get('/', ctrl.list);
+router.post('/', requireRole('super_admin','national_admin'), ctrl.create);
+router.patch('/:id', requireRole('super_admin','national_admin'), ctrl.update);
+module.exports = router;

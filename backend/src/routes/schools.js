@@ -1,0 +1,11 @@
+const express = require('express');
+const ctrl = require('../controllers/schoolsController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/', ctrl.list);
+router.get('/:id', ctrl.get);
+router.post('/', requireRole('super_admin','national_admin','regional_coordinator','district_director','district_coordinator'), ctrl.create);
+router.patch('/:id', requireRole('super_admin','national_admin','regional_coordinator','district_director','district_coordinator'), ctrl.update);
+router.delete('/:id', requireRole('super_admin','national_admin','regional_coordinator','district_director'), ctrl.remove);
+module.exports = router;

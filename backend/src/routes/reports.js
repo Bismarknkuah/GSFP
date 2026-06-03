@@ -1,0 +1,11 @@
+const express = require('express');
+const ctrl = require('../controllers/reportsController');
+const { authenticate, scopeCheck } = require('../middleware/auth');
+const { upload } = require('../middleware/upload');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/', ctrl.list);
+router.post('/', upload.single('photo'), ctrl.create);
+router.patch('/:id/review', ctrl.review);
+router.patch('/:id/regional-review', ctrl.regionalReview);
+module.exports = router;

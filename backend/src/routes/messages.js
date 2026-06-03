@@ -1,0 +1,11 @@
+const express = require('express');
+const ctrl = require('../controllers/messagesController');
+const { authenticate, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/users', ctrl.getUsers);
+router.get('/', ctrl.list);
+router.post('/', ctrl.send);
+router.post('/read-all', ctrl.markAllRead);
+router.post('/:id/read', ctrl.markRead);
+module.exports = router;

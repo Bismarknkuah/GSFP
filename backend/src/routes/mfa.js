@@ -1,0 +1,11 @@
+const express=require('express');
+const ctrl=require('../controllers/mfaController');
+const {authenticate}=require('../middleware/auth');
+const router=express.Router();
+router.use(authenticate);
+router.get('/status',   ctrl.getStatus);
+router.post('/setup',   ctrl.setup);
+router.post('/send-otp',ctrl.sendOTP);
+router.post('/verify',  ctrl.verify);
+router.post('/disable', ctrl.disable);
+module.exports=router;

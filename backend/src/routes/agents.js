@@ -1,0 +1,14 @@
+const express = require('express');
+const ctrl    = require('../controllers/agentsController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router  = express.Router();
+const ALLOWED = ['ceo','national_director','super_admin','national_admin','regional_coordinator','district_director'];
+router.use(authenticate, scopeCheck);
+router.get('/list',                ctrl.getAgentList);
+router.get('/stats',               ctrl.dashboardStats);
+router.get('/alerts',              ctrl.listAlerts);
+router.get('/runs',                requireRole(...ALLOWED), ctrl.listRuns);
+router.post('/run',                requireRole(...ALLOWED), ctrl.runAgents);
+router.post('/alerts/:id/acknowledge', requireRole(...ALLOWED), ctrl.acknowledgeAlert);
+router.post('/alerts/:id/resolve',     requireRole(...ALLOWED), ctrl.resolveAlert);
+module.exports = router;

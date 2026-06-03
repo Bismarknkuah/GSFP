@@ -1,0 +1,14 @@
+const express  = require('express');
+const multer   = require('multer');
+const path     = require('path');
+const ctrl     = require('../controllers/authController');
+const { authenticate } = require('../middleware/auth');
+const router   = express.Router();
+const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+const storage = multer.diskStorage({ destination:(_r,_f,cb)=>cb(null,UPLOAD_DIR), filename:(_r,file,cb)=>cb(null,`profile-${Date.now()}${path.extname(file.originalname)}`) });
+const upload = multer({ storage, limits:{fileSize:5*1024*1024}, fileFilter:(_r,file,cb)=>cb(null,/^image\/(jpeg|png|webp)$/.test(file.mimetype)) });
+router.post('/login',           ctrl.login);
+router.get('/me',               authenticate, ctrl.me);
+router.post('/change-password', authenticate, ctrl.changePassword);
+router.patch('/profile',        authenticate, upload.single('avatar'), ctrl.updateProfile);
+module.exports = router;

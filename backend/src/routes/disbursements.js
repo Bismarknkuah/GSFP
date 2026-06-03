@@ -1,0 +1,13 @@
+const express = require('express');
+const ctrl    = require('../controllers/disbursementController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router  = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/annual-summary',     ctrl.annualSummary);
+router.get('/',                   ctrl.list);
+router.get('/:id',                ctrl.get);
+router.post('/',                  requireRole('super_admin','national_admin','national_finance','regional_finance','finance_officer'), ctrl.create);
+router.post('/:id/ceo-approve',   requireRole('ceo','national_director','super_admin'), ctrl.ceoApprove);
+router.post('/:id/ceo-reject',    requireRole('ceo','national_director','super_admin'), ctrl.ceoReject);
+router.post('/:id/execute',       requireRole('super_admin','national_finance'), ctrl.execute);
+module.exports = router;

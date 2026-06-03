@@ -1,0 +1,13 @@
+const express=require('express');
+const ctrl=require('../controllers/notificationController');
+const Notification=require('../models/Notification');
+const {authenticate,requireRole}=require('../middleware/auth');
+const {n}=require('../utils/normalize');
+const router=express.Router();
+router.use(authenticate);
+router.get('/vapid-key',   ctrl.getVapidPublicKey);
+router.get('/logs',        requireRole('ceo','national_director','super_admin','national_admin'), ctrl.getLogs);
+router.post('/test',       requireRole('ceo','national_director','super_admin','national_admin'), ctrl.test);
+router.get('/',            async(req,res)=>{ try{ const n2=await Notification.find({user_id:req.user._id}).sort({created_at:-1}).limit(50).lean(); res.json({notifications:n2.map(n),unread:n2.filter(x=>!x.read).length}); }catch(e){res.json({notifications:[],unread:0});}});
+router.post('/read-all',   async(req,res)=>{ await Notification.updateMany({user_id:req.user._id,read:false},{read:true}); res.json({ok:true}); });
+module.exports=router;

@@ -1,0 +1,11 @@
+const express = require('express');
+const ctrl = require('../controllers/paymentsController');
+const { authenticate, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/summary', ctrl.summary);
+router.get('/', ctrl.list);
+router.post('/', ctrl.create);
+router.patch('/:id', ctrl.update);
+router.post('/self-report', ctrl.selfReport);
+module.exports = router;

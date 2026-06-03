@@ -1,0 +1,22 @@
+const {Schema,model}=require('mongoose');
+module.exports=model('AgentAlert',new Schema({
+  _id:String,
+  agent_name:String,
+  agent_type:{type:String,enum:['compliance','fraud','financial','data_quality','security']},
+  severity:{type:String,enum:['info','warning','critical'],default:'warning'},
+  title:String,
+  description:String,
+  affected_entity:{type:String,default:null},
+  affected_entity_type:{type:String,default:null},
+  region_id:{type:String,default:null},
+  district_id:{type:String,default:null},
+  school_id:{type:String,default:null},
+  data:{type:Object,default:{}},
+  status:{type:String,enum:['open','acknowledged','resolved','dismissed'],default:'open'},
+  acknowledged_by:{type:String,default:null},
+  acknowledged_at:{type:String,default:null},
+  resolved_by:{type:String,default:null},
+  resolved_at:{type:String,default:null},
+  resolution_note:{type:String,default:null},
+  created_at:String,
+},{_id:false,versionKey:false}));

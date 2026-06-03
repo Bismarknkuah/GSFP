@@ -1,0 +1,11 @@
+const express = require('express');
+const ctrl = require('../controllers/analyticsController');
+const { authenticate, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/overview', ctrl.overview);
+router.get('/monthly', ctrl.monthly);
+router.get('/caterers', ctrl.caterers);
+router.get('/regional/:regionId', ctrl.regional);
+module.exports = router;
+router.get('/national', ctrl.nationalSummary);

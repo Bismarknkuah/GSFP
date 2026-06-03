@@ -1,0 +1,1 @@
+export default function EmptyState({icon:Icon,title,description}){return <div className="text-center py-12"><Icon className="w-12 h-12 mx-auto text-stone-300 mb-3"/><h3 className="font-medium text-stone-600">{title}</h3>{description&&<p className="text-sm text-stone-400 mt-1">{description}</p>}</div>;}

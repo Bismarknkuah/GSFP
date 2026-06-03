@@ -1,0 +1,20 @@
+const {Schema,model}=require('mongoose');
+module.exports=model('GhanaCard',new Schema({
+  _id:String,
+  user_id:{type:String,required:true,unique:true},
+  ghana_card_number:String,
+  full_name_on_card:String,
+  date_of_birth:{type:String,default:null},
+  gender:{type:String,default:null},
+  photo_url:{type:String,default:null},
+  verification_status:{type:String,enum:['not_submitted','pending','verified','failed','expired'],default:'not_submitted'},
+  verification_method:{type:String,enum:['api','manual','document'],default:'manual'},
+  verified_by:{type:String,default:null},
+  verified_at:{type:String,default:null},
+  rejection_reason:{type:String,default:null},
+  nia_reference:{type:String,default:null},
+  submitted_at:{type:String,default:null},
+  expires_at:{type:String,default:null},
+  created_at:String,
+  updated_at:String,
+},{_id:false,versionKey:false}));

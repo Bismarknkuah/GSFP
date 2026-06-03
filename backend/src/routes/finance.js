@@ -1,0 +1,12 @@
+const express = require('express');
+const ctrl = require('../controllers/financeController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/summary', ctrl.nationalSummary);
+router.get('/budgets', ctrl.getBudgets);
+router.post('/budgets', requireRole('super_admin','national_finance','regional_finance','finance_officer'), ctrl.createBudget);
+router.get('/allocations', ctrl.getAllocations);
+router.post('/allocations', requireRole('super_admin','national_finance','regional_finance'), ctrl.createAllocation);
+router.post('/allocations/:id/approve', requireRole('super_admin','national_finance','national_admin'), ctrl.approveAllocation);
+module.exports = router;

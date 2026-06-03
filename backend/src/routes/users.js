@@ -1,0 +1,14 @@
+const express = require('express');
+const ctrl = require('../controllers/usersController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router = express.Router();
+router.use(authenticate, scopeCheck);
+router.get('/roles', ctrl.roles);
+router.get('/', ctrl.list);
+router.get('/:id', ctrl.get);
+router.post('/', requireRole('super_admin','national_admin','regional_admin','district_director','district_coordinator'), ctrl.create);
+router.patch('/:id', requireRole('super_admin','national_admin'), ctrl.update);
+router.delete('/:id', requireRole('super_admin','national_admin'), ctrl.remove);
+router.post('/:id/deactivate', requireRole('super_admin','national_admin','district_director'), ctrl.deactivate);
+router.post('/:id/reactivate', requireRole('super_admin','national_admin'), ctrl.reactivate);
+module.exports = router;

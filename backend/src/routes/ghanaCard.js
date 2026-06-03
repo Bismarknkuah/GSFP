@@ -1,0 +1,12 @@
+const express = require('express');
+const ctrl    = require('../controllers/ghanaCardController');
+const { authenticate, requireRole, scopeCheck } = require('../middleware/auth');
+const router  = express.Router();
+router.use(authenticate);
+router.get('/stats',                              ctrl.stats);
+router.get('/all',        requireRole('ceo','national_director','super_admin','national_admin','regional_coordinator','district_director','district_coordinator'), ctrl.listAll);
+router.get('/:userId',    ctrl.getStatus);
+router.post('/submit',    ctrl.submit);
+router.post('/admin-verify/:userId', requireRole('ceo','national_director','super_admin','national_admin','regional_coordinator','district_director','district_coordinator'), ctrl.adminVerify);
+router.post('/admin-reject/:userId', requireRole('ceo','national_director','super_admin','national_admin','regional_coordinator','district_director','district_coordinator'), ctrl.adminReject);
+module.exports = router;

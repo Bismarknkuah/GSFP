@@ -1,0 +1,4 @@
+export default function KPI({label,value,icon:Icon,tone='forest',sub,trend}){
+  const colors={forest:'text-forest',emerald:'text-emerald',amber:'text-amber',rust:'text-rust',navy:'text-navy',purple:'text-purple-600'};
+  return <div className="bg-white rounded-2xl p-5 shadow-sm border border-stone-100"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-xs font-medium text-stone-400 uppercase tracking-wider truncate">{label}</p><p className={`text-3xl font-bold font-serif mt-1 ${colors[tone]||colors.forest}`}>{value}</p>{sub&&<p className="text-xs text-stone-400 mt-0.5">{sub}</p>}</div>{Icon&&<div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-${tone}/10 flex-shrink-0`}><Icon className={`w-5 h-5 ${colors[tone]}`}/></div>}</div></div>;
+}
