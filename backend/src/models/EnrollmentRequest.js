@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
+
 const schema = new mongoose.Schema({
+  _id:               { type:String },
   school_id:         { type:String, required:true },
   headmaster_id:     { type:String, required:true },
   headmaster_name:   { type:String },
@@ -16,5 +18,6 @@ const schema = new mongoose.Schema({
   district_id:       { type:String },
   region_id:         { type:String },
   created_at:        { type:Date, default:Date.now },
-});
+}, { _id: false });
+
 module.exports = mongoose.model('EnrollmentRequest', schema);
