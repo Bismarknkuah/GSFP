@@ -1,151 +1,123 @@
 const { parse } = require('csv-parse/sync');
+const bcrypt    = require('bcryptjs');
 const School    = require('../models/School');
-const User      = require('../models/User');
+const Report    = require('../models/Report');
 const Payment   = require('../models/Payment');
-const AuditLog  = require('../models/AuditLog');
-const { audit } = require('../utils/audit');
-const { n }     = require('../utils/normalize');
-const { newId, nowISO, todayISO } = require('../utils/ids');
+const User      = require('../models/User');
+const { newId, nowISO, daysAgoISO } = require('../utils/ids');
 
-const RATE = 2.00;
+const parseCSV = (buffer) => parse(buffer, { columns:true, skip_empty_lines:true, trim:true });
 
-// Parse uploaded CSV/bank data
+// Upload payments
 exports.uploadPayments = async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const raw = req.file.buffer.toString('utf8');
-  let rows;
-  try {
-    rows = parse(raw, {
-      columns: true, skip_empty_lines: true, trim: true,
-      cast: true, relax_quotes: true,
-    });
-  } catch (e) {
-    return res.status(400).json({ error: `Could not parse CSV: ${e.message}` });
-  }
-
-  const results = { created: [], updated: [], skipped: [], errors: [] };
-
+  const rows   = parseCSV(req.file.buffer);
+  let inserted=0, errors=0, errorDetails=[];
   for (const row of rows) {
     try {
-      // Flexible column mapping
-      const schoolCode     = (row['school_code'] || row['School Code'] || row['school_code'] || '').toString().trim().toUpperCase();
-      const period         = (row['period'] || row['Period'] || row['term'] || '2025/2026 - Term 1').toString().trim();
-      const daysCovered    = Number(row['days_covered'] || row['Days Covered'] || row['days_served'] || 0);
-      const daysPaid       = Number(row['days_paid'] || row['Days Paid'] || row['days_paid'] || 0);
-      const amountPaid     = Number(row['amount_paid'] || row['Amount Paid'] || row['amount'] || 0);
-      const paymentDate    = (row['payment_date'] || row['Payment Date'] || row['date'] || todayISO()).toString().trim();
-      const reference      = (row['reference'] || row['Reference'] || row['transaction_id'] || row['bank_ref'] || '').toString().trim();
-      const bankName       = (row['bank_name'] || row['Bank'] || 'Bank Upload').toString().trim();
-
-      if (!schoolCode) { results.skipped.push({ row, reason: 'Missing school_code' }); continue; }
-
-      const school = await School.findOne({ code: schoolCode, active: true }).lean();
-      if (!school) { results.errors.push({ schoolCode, reason: `School ${schoolCode} not found` }); continue; }
-
-      const caterer = school.caterer_id ? await User.findOne({ _id: school.caterer_id, role: 'caterer' }).lean() : null;
-      if (!caterer) { results.errors.push({ schoolCode, reason: 'No caterer linked to school' }); continue; }
-
-      const daysArr   = Math.max(0, daysCovered - daysPaid);
-      const enrolled  = school.enrolled;
-      const rate      = caterer.rate_per_student || RATE;
-      const expected  = daysPaid * enrolled * rate;
-      const arrAmt    = daysArr * enrolled * rate;
-      const auto      = amountPaid > 0 ? amountPaid : expected;
-
-      // Check if payment record already exists for this caterer+period
-      const existing = await Payment.findOne({ caterer_id: caterer._id, period }).lean();
-      if (existing) {
-        await Payment.updateOne({ _id: existing._id }, {
-          days_covered: Math.max(existing.days_covered, daysCovered),
-          days_paid: Math.max(existing.days_paid, daysPaid),
-          days_arrears: Math.max(0, Math.max(existing.days_covered, daysCovered) - Math.max(existing.days_paid, daysPaid)),
-          amount_paid: auto,
-          arrears_amount: arrAmt,
-          status: daysArr === 0 ? 'fully-paid' : 'partial',
-          last_payment_date: paymentDate,
-          reference: reference || existing.reference,
-          source: bankName,
-        });
-        results.updated.push({ schoolCode, caterer: caterer.name, daysPaid, amount: auto });
-      } else {
-        const id = newId('pay');
-        await Payment.create({
-          _id: id, caterer_id: caterer._id,
-          district_id: school.district_id, region_id: school.region_id,
-          period, meals_served: daysPaid * enrolled,
-          days_covered: daysCovered, days_paid: daysPaid, days_arrears: daysArr,
-          rate_per_student: rate, amount_paid: auto, arrears_amount: arrAmt,
-          status: daysArr === 0 ? 'fully-paid' : 'partial',
-          last_payment_date: paymentDate,
-          source: bankName, reference: reference || null,
-          caterer_reported: false, received_amount: auto,
-          co_approval_required: !!school.caterer2_id, co_approved: !school.caterer2_id,
-          visible_to_oversight: true, created_at: nowISO(),
-        });
-        results.created.push({ schoolCode, caterer: caterer.name, daysPaid, amount: auto });
-      }
-    } catch (e) {
-      results.errors.push({ row, reason: e.message });
-    }
+      const school = await School.findOne({ code: row.school_code });
+      if (!school) { errors++; errorDetails.push(`School not found: ${row.school_code}`); continue; }
+      const caterer = await User.findOne({ username: row.caterer_username });
+      const covered = Number(row.days_covered)||0;
+      const paid    = Number(row.days_paid)||0;
+      const arrears = covered - paid;
+      const rate    = 2.00;
+      await Payment.create({
+        _id:newId('pay'), caterer_id:caterer?._id||row.caterer_username,
+        school_id:school._id, district_id:school.district_id, region_id:school.region_id,
+        period:row.period, days_covered:covered, days_paid:paid, days_arrears:arrears,
+        rate_per_student:rate, amount_paid:Number(row.amount_paid)||paid*school.enrolled*rate,
+        arrears_amount:arrears*school.enrolled*rate, status:arrears===0?'fully-paid':'partial',
+        last_payment_date:row.payment_date||nowISO(), reference:row.reference||'',
+        source:'Bulk Upload', created_at:nowISO(),
+      });
+      inserted++;
+    } catch(e) { errors++; errorDetails.push(`Row error: ${e.message}`); }
   }
-
-  await audit({ user: req.user, action: 'BULK_PAYMENT_UPLOAD', target: 'payments',
-    details: `Created:${results.created.length} Updated:${results.updated.length} Errors:${results.errors.length}` });
-
-  res.json({
-    summary: { total: rows.length, created: results.created.length, updated: results.updated.length, skipped: results.skipped.length, errors: results.errors.length },
-    results,
-  });
+  res.json({ ok:true, processed:rows.length, inserted, errors, error_details:errorDetails.slice(0,10) });
 };
 
-exports.downloadTemplate = (_req, res) => {
-  const header = 'school_code,period,days_covered,days_paid,amount_paid,payment_date,reference,bank_name';
-  const example = [
-    'AKT-001,2025/2026 - Term 1,60,50,53000,2025-10-15,GCB-TXN-001,Ghana Commercial Bank',
-    'AKT-002,2025/2026 - Term 1,60,45,38745,2025-10-15,GCB-TXN-002,Ghana Commercial Bank',
-    'AKT-003,2025/2026 - Term 1,60,55,47300,2025-10-15,GCB-TXN-003,Ghana Commercial Bank',
-  ];
-  const csv = [header, ...example].join('\n');
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename=GSFP_payment_upload_template.csv');
+// Upload feeding reports
+exports.uploadReports = async (req, res) => {
+  const rows = parseCSV(req.file.buffer);
+  let inserted=0, errors=0, errorDetails=[];
+  for (const row of rows) {
+    try {
+      const school  = await School.findOne({ code: row.school_code });
+      if (!school) { errors++; errorDetails.push(`School not found: ${row.school_code}`); continue; }
+      const caterer = await User.findOne({ username: row.caterer_username });
+      await Report.create({
+        _id:newId('rep'), caterer_id:caterer?._id||row.caterer_username,
+        school_id:school._id, district_id:school.district_id, region_id:school.region_id,
+        date:row.date, food_type:row.food_type, students_fed:Number(row.students_fed)||0,
+        time_ready:row.time_ready||null, time_served:row.time_served||null,
+        notes:row.notes||null, status:row.status||'approved',
+        headmaster_comment:row.headmaster_comment||null,
+        forwarded:row.status==='approved', submitted_at:row.date+'T12:00:00.000Z',
+        created_at:nowISO(),
+      });
+      inserted++;
+    } catch(e) { errors++; errorDetails.push(`Row error: ${e.message}`); }
+  }
+  res.json({ ok:true, processed:rows.length, inserted, errors, error_details:errorDetails.slice(0,10) });
+};
+
+// Upload schools
+exports.uploadSchools = async (req, res) => {
+  const rows = parseCSV(req.file.buffer);
+  const District = require('../models/District');
+  let inserted=0, errors=0, errorDetails=[];
+  for (const row of rows) {
+    try {
+      const district = await District.findOne({ code: row.district_code });
+      if (!district) { errors++; errorDetails.push(`District not found: ${row.district_code}`); continue; }
+      const existing = await School.findOne({ code: row.code });
+      if (existing) { await School.updateOne({ code:row.code },{ name:row.name, town:row.town, enrolled:Number(row.enrolled)||0 }); inserted++; continue; }
+      await School.create({
+        _id:newId('sch'), code:row.code, name:row.name, town:row.town,
+        district_id:district._id, region_id:district.region_id,
+        enrolled:Number(row.enrolled)||0, active:true, created_at:nowISO(),
+      });
+      inserted++;
+    } catch(e) { errors++; errorDetails.push(e.message); }
+  }
+  res.json({ ok:true, processed:rows.length, inserted, errors, error_details:errorDetails.slice(0,10) });
+};
+
+// Upload users
+exports.uploadUsers = async (req, res) => {
+  const rows = parseCSV(req.file.buffer);
+  let inserted=0, errors=0, errorDetails=[];
+  const defaultPwd = bcrypt.hashSync('gsfp2025', 10);
+  for (const row of rows) {
+    try {
+      const existing = await User.findOne({ username: row.username });
+      if (existing) { errors++; errorDetails.push(`User already exists: ${row.username}`); continue; }
+      const school   = row.school_code ? await School.findOne({ code:row.school_code }) : null;
+      const District = require('../models/District');
+      const district = row.district_code ? await District.findOne({ code:row.district_code }) : null;
+      await User.create({
+        _id:newId('usr'), username:row.username, name:row.name, role:row.role,
+        password_hash:defaultPwd, email:row.email||null, phone:row.phone||null,
+        school_id:school?._id||null, district_id:district?._id||null,
+        region_id:district?.region_id||null, active:true, created_at:nowISO(),
+      });
+      inserted++;
+    } catch(e) { errors++; errorDetails.push(e.message); }
+  }
+  res.json({ ok:true, processed:rows.length, inserted, errors, error_details:errorDetails.slice(0,10), note:'Default password: gsfp2025' });
+};
+
+// Template download
+exports.downloadTemplate = (req, res) => {
+  const templates = {
+    payments: 'school_code,caterer_username,period,days_covered,days_paid,amount_paid,payment_date,reference\nAKT-001,caterer1,2024/2025 - Term 1,60,45,54000,2025-04-15,GCB-TXN-001',
+    reports:  'school_code,caterer_username,date,food_type,students_fed,time_ready,time_served,status\nAKT-001,caterer1,2025-01-06,Jollof Rice with Chicken,400,11:00,12:30,approved',
+    schools:  'code,name,town,district_code,enrolled,headmaster_name,caterer_name\nAKT-009,New D/A Primary,Akontombra,WNR-AKT,287,Mr. Kwame Asante,Madam Akua Mensah',
+    users:    'username,name,role,district_code,school_code,email,phone\nhead9,Mr. Kofi Mensah,headmaster,WNR-AKT,AKT-009,,0244000001',
+  };
+  const type = req.query.type || 'payments';
+  const csv  = templates[type] || templates.payments;
+  res.setHeader('Content-Type','text/csv');
+  res.setHeader('Content-Disposition',`attachment; filename=gsfp_${type}_template.csv`);
   res.send(csv);
-};
-
-exports.paymentSummaryByLevel = async (req, res) => {
-  const { level, regionId, districtId } = req.query;
-  const u = req.user;
-  const filter = {};
-  if (regionId)   filter.region_id   = regionId;
-  if (districtId) filter.district_id = districtId;
-  if (u.region_id && !regionId)     filter.region_id   = u.region_id;
-  if (u.district_id && !districtId) filter.district_id = u.district_id;
-
-  const payments = await Payment.find(filter).lean();
-  const schools  = await School.find(filter.district_id ? { district_id:filter.district_id } : filter.region_id ? { region_id:filter.region_id } : {}).lean();
-  const caterers = await User.find({ role:'caterer', ...(filter.district_id?{district_id:filter.district_id}:filter.region_id?{region_id:filter.region_id}:{}) }).lean();
-
-  const received  = payments.filter(p=>p.days_paid>0).length;
-  const totalDaysPaid    = payments.reduce((s,p)=>s+p.days_paid,0);
-  const totalDaysCovered = payments.reduce((s,p)=>s+p.days_covered,0);
-  const totalArrears     = payments.reduce((s,p)=>s+p.days_arrears,0);
-  const totalAmountPaid  = payments.reduce((s,p)=>s+p.amount_paid,0);
-  const totalArrearAmt   = payments.reduce((s,p)=>s+p.arrears_amount,0);
-  const fullyPaid        = payments.filter(p=>p.status==='fully-paid').length;
-
-  res.json({
-    summary: {
-      total_caterers: caterers.length,
-      caterers_received_pay: received,
-      caterers_with_arrears: payments.filter(p=>p.days_arrears>0).length,
-      caterers_fully_paid: fullyPaid,
-      total_days_covered: totalDaysCovered,
-      total_days_paid: totalDaysPaid,
-      total_days_arrears: totalArrears,
-      total_amount_paid: totalAmountPaid,
-      total_arrears_amount: totalArrearAmt,
-      total_schools: schools.length,
-      rate_per_day_per_pupil: RATE,
-    },
-    payments: payments.map(n),
-  });
 };

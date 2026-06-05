@@ -1,323 +1,158 @@
-import { useEffect, useState } from 'react';
-import { Settings, Globe, Users, DollarSign, ShieldCheck, Bell, Database, ChevronRight, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
-import { api } from '../../api/client';
-import PageHeader from '../ui/PageHeader';
+import { useState } from 'react';
+import { Settings, Trash2, AlertTriangle, RefreshCw, Shield, CheckCircle2, Database, AlertCircle, Lock } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import Pill from '../ui/Pill';
-import { ROLE_LABELS, GHANA_REGIONS } from '../../utils/format';
+import Modal from '../ui/Modal';
+import { fmtDateTime } from '../../utils/format';
 
-const SECTIONS=[
-  {id:'overview',      label:'System Overview',      icon:Settings},
-  {id:'regions',       label:'Region Registry',       icon:Globe},
-  {id:'rbac',          label:'Roles & Permissions',   icon:ShieldCheck},
-  {id:'finance',       label:'Financial Policies',    icon:DollarSign},
-  {id:'security',      label:'Security Settings',     icon:ShieldCheck},
-  {id:'notifications', label:'Notification Rules',    icon:Bell},
-  {id:'data',          label:'Data & Compliance',     icon:Database},
-];
+const BASE = import.meta.env.VITE_BACKEND_URL || '';
 
-const PERM_COLS=['Manage Regions','Manage Users','Approve Budgets','View All Reports','Bulk Upload','Sys Config'];
-const ROLE_PERMS={
-  ceo:                 [true, true, true, true, true, true],
-  national_director:   [true, true, true, true, true, true],
-  super_admin:         [true, true, true, true, true, true],
-  national_admin:      [true, true, false,true, true, false],
-  national_finance:    [false,false,true, true, true, false],
-  regional_coordinator:[false,true, false,true, true, false],
-  regional_admin:      [false,true, false,true, false,false],
-  district_director:   [false,true, false,true, false,false],
-  district_coordinator:[false,false,false,true, true, false],
-  finance_officer:     [false,false,false,true, true, false],
-  caterer:             [false,false,false,false,false,false],
-  headmaster:          [false,false,false,false,false,false],
-};
-
-const roleGroups=[
-  {tier:'Executive', color:'#0d1117',roles:['ceo','national_director']},
-  {tier:'National',  color:'#1a1a2e',roles:['super_admin','national_admin','national_finance']},
-  {tier:'Regional',  color:'#7C3AED',roles:['regional_minister','regional_coordinator','regional_admin','regional_finance','regional_auditor']},
-  {tier:'District',  color:'#15493B',roles:['district_director','district_coordinator','district_admin','finance_officer','auditor','monitoring_officer','data_entry']},
-  {tier:'School',    color:'#C9882C',roles:['caterer','headmaster','readonly']},
+const RESET_OPTIONS = [
+  { id:'reports',          label:'Reports Only',        desc:'Delete all feeding reports only. Users, schools, payments are kept.', color:'amber', icon:'📋' },
+  { id:'payments',         label:'Payments Only',        desc:'Delete all payment records only. Users, schools, reports are kept.', color:'amber', icon:'💰' },
+  { id:'reports_payments', label:'Reports & Payments',   desc:'Delete all reports and payments. Users and schools kept intact.',    color:'rust',  icon:'🗃️' },
+  { id:'all',              label:'Full System Reset',    desc:'Delete ALL data — reports, payments, users, schools, regions. Returns to a completely empty state.', color:'rust', icon:'⚠️' },
 ];
 
 export default function SystemConfig() {
-  const [sec,   setSec]  = useState('overview');
-  const [regions,setReg] = useState([]);
-  const [users,  setUsr] = useState([]);
-  const [stats,  setSt]  = useState({});
-  const [load,   setLoad]= useState(true);
-  const [error,  setErr] = useState(null);
+  const { user } = useAuth();
+  const [resetModal,   setResetModal]   = useState(null);
+  const [confirmText,  setConfirmText]  = useState('');
+  const [busy,         setBusy]         = useState(false);
+  const [ok,           setOk]           = useState(null);
+  const [err,          setErr]          = useState(null);
+  const [actionLog,    setActionLog]    = useState([]);
 
-  const fetchData = () => {
-    setLoad(true); setErr(null);
-    Promise.allSettled([
-      api.regions.list(),
-      api.users.list(),
-      api.analytics.overview(),
-    ]).then(([rRes, uRes, ovRes]) => {
-      if (rRes.status==='fulfilled') setReg(rRes.value?.regions||[]);
-      if (uRes.status==='fulfilled') setUsr(uRes.value?.users||[]);
-      if (ovRes.status==='fulfilled') setSt(ovRes.value?.counters||{});
-      // Show error only if ALL failed
-      if ([rRes,uRes,ovRes].every(r=>r.status==='rejected')) setErr('Could not load config data. Check backend connection.');
-    }).finally(()=>setLoad(false));
+  if (user.role !== 'super_admin') return (
+    <div className="flex flex-col items-center justify-center py-24 gap-4">
+      <Lock className="w-12 h-12 text-stone-300"/>
+      <p className="font-semibold text-stone-500">Super Admin access required</p>
+      <p className="text-sm text-stone-400">Only the Super Administrator can access system configuration.</p>
+    </div>
+  );
+
+  const authHeader = { 'Content-Type':'application/json', Authorization:`Bearer ${localStorage.getItem('gsfp.token')}` };
+
+  const doReset = async () => {
+    if (confirmText !== 'RESET CONFIRMED') { setErr('Type exactly: RESET CONFIRMED'); return; }
+    setBusy(true); setErr(null);
+    try {
+      const res  = await fetch(`${BASE}/api/system/reset`, { method:'POST', headers:authHeader, body:JSON.stringify({ scope:resetModal.id }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error||'Reset failed');
+      const summary = data.deleted ? Object.entries(data.deleted).map(([k,v])=>`${v} ${k}`).join(', ')+' deleted.' : 'Complete.';
+      setOk(`✓ ${resetModal.label} completed. ${summary}`);
+      setActionLog(l=>[{ action:`Reset: ${resetModal.label}`, by:user.name, at:new Date().toISOString() },...l.slice(0,9)]);
+      setResetModal(null); setConfirmText('');
+    } catch(e) { setErr(e.message); } finally { setBusy(false); }
   };
 
-  useEffect(()=>{ fetchData(); },[]);
-
-  const count = (role) => users.filter(u=>u.role===role).length;
-
-  if (load) return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
-      <div className="w-8 h-8 border-4 border-forest border-t-transparent rounded-full animate-spin"/>
-      <p className="text-stone-400 text-sm">Loading system configuration...</p>
-    </div>
-  );
-
-  if (error) return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-      <AlertCircle className="w-10 h-10 text-rust opacity-50"/>
-      <p className="text-stone-500 text-sm text-center max-w-sm">{error}</p>
-      <Button onClick={fetchData} icon={RefreshCw} variant="secondary">Retry</Button>
-    </div>
-  );
+  const doReseed = async () => {
+    setBusy(true); setErr(null); setOk(null);
+    try {
+      const res  = await fetch(`${BASE}/api/system/reseed`, { method:'POST', headers:authHeader });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error||'Reseed failed');
+      setOk(`✓ Demo data loaded: ${data.summary||'34 users, 8 schools, 30 days of reports, payments'}`);
+      setActionLog(l=>[{ action:'Reseed with demo data', by:user.name, at:new Date().toISOString() },...l.slice(0,9)]);
+    } catch(e) { setErr(e.message); } finally { setBusy(false); }
+  };
 
   return (
-    <>
-      <PageHeader title="System Configuration" subtitle="Platform governance, role permissions, security policies and compliance settings."/>
-      <div className="grid lg:grid-cols-4 gap-6">
-        {/* Sidebar nav */}
-        <Card noPadding className="h-fit">
-          <div className="divide-y divide-stone-50">
-            {SECTIONS.map(s=>(
-              <button key={s.id} onClick={()=>setSec(s.id)}
-                className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors ${sec===s.id?'bg-forest text-white':'text-stone-600 hover:bg-stone-50'}`}>
-                <span className="flex items-center gap-2.5"><s.icon className="w-4 h-4"/>{s.label}</span>
-                <ChevronRight className="w-3 h-3 opacity-40"/>
-              </button>
+    <div className="space-y-5">
+      <div className="relative overflow-hidden rounded-2xl p-5" style={{background:'linear-gradient(135deg,#0d1117 0%,#1F2937 100%)'}}>
+        <div className="absolute inset-0 opacity-5" style={{backgroundImage:'radial-gradient(circle at 2px 2px,white 1px,transparent 0)',backgroundSize:'20px 20px'}}/>
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-2"><Settings className="w-4 h-4 text-amber"/><span className="text-[10px] font-bold tracking-widest text-amber/70 uppercase">System Administration</span></div>
+          <h1 className="font-serif text-2xl font-bold text-white">System Configuration</h1>
+          <p className="text-white/50 text-sm mt-1">{user.name} · Super Administrator</p>
+        </div>
+      </div>
+
+      {ok&&<div className="p-3 bg-emerald/10 text-emerald rounded-xl text-sm flex items-center gap-2"><CheckCircle2 className="w-4 h-4 flex-shrink-0"/>{ok}</div>}
+      {err&&<div className="p-3 bg-rust/10 text-rust rounded-xl text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4 flex-shrink-0"/>{err}</div>}
+
+      <div className="p-4 bg-rust/10 border-2 border-rust/30 rounded-2xl flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-rust flex-shrink-0 mt-0.5"/>
+        <div><p className="font-bold text-rust">Danger Zone — Irreversible Actions</p>
+          <p className="text-sm text-stone-600 mt-0.5">These operations permanently delete data from the production database. There is no undo. Ensure you have a backup before proceeding.</p>
+        </div>
+      </div>
+
+      <Card>
+        <h3 className="font-semibold text-ink mb-1 flex items-center gap-2"><Trash2 className="w-4 h-4 text-rust"/>Data Reset Options</h3>
+        <p className="text-xs text-stone-400 mb-4">Select what to delete. All require typing a confirmation phrase.</p>
+        <div className="grid md:grid-cols-2 gap-3">
+          {RESET_OPTIONS.map(opt=>(
+            <div key={opt.id} className={`p-4 rounded-xl border-2 ${opt.color==='rust'?'border-rust/20 bg-rust/5':'border-amber/20 bg-amber/5'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div><div className="flex items-center gap-2 mb-1"><span className="text-xl">{opt.icon}</span><span className="font-bold text-ink">{opt.label}</span></div>
+                  <p className="text-xs text-stone-500">{opt.desc}</p></div>
+                <button onClick={()=>{ setResetModal(opt); setConfirmText(''); setErr(null); }}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold ${opt.color==='rust'?'bg-rust text-white hover:bg-rust/90':'bg-amber/90 text-white hover:bg-amber'}`}>
+                  Reset</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="font-semibold text-ink mb-1 flex items-center gap-2"><Database className="w-4 h-4 text-forest"/>Load Demo Data</h3>
+        <p className="text-xs text-stone-400 mb-4">Wipe current data and reload fresh demo data — 34 users, 8 schools, 30 days of reports, payments, disbursements, FAQs.</p>
+        <div className="flex items-center justify-between p-4 bg-forest/5 border border-forest/20 rounded-xl">
+          <div><div className="font-semibold text-ink">Reseed Production Database</div>
+            <div className="text-xs text-stone-400 mt-0.5">All current data will be replaced with demo data</div></div>
+          <Button icon={RefreshCw} onClick={doReseed} disabled={busy} variant="secondary">{busy?'Loading...':'Load Demo Data'}</Button>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="font-semibold text-ink mb-3 flex items-center gap-2"><Shield className="w-4 h-4 text-navy"/>System Information</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[['System','GSFP v2'],['Backend','Node.js + Express'],['Database','MongoDB Atlas'],['Frontend','React 18 + Vite']].map(([l,v])=>(
+            <div key={l} className="bg-stone-50 rounded-xl p-3"><div className="text-xs text-stone-400">{l}</div><div className="font-semibold text-ink text-sm">{v}</div></div>
+          ))}
+        </div>
+      </Card>
+
+      {actionLog.length>0&&(
+        <Card><h3 className="font-semibold text-ink mb-3">Recent Admin Actions</h3>
+          <div className="space-y-2">
+            {actionLog.map((l,i)=>(
+              <div key={i} className="flex items-center justify-between text-sm py-2 border-b border-stone-50 last:border-0">
+                <span className="text-stone-600">{l.action}</span>
+                <span className="text-xs text-stone-400">{l.by} · {fmtDateTime(l.at)}</span>
+              </div>
             ))}
           </div>
         </Card>
+      )}
 
-        <div className="lg:col-span-3 space-y-4">
-
-          {/* ── OVERVIEW ── */}
-          {sec==='overview'&&(
-            <>
-              <Card>
-                <h3 className="font-semibold text-ink mb-4">System Status</h3>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {[
-                    ['Platform',    'GSFP Management System v2.0',          'emerald'],
-                    ['Version',     'Phase 1+2 Complete',                    'forest'],
-                    ['Auth',        'JWT Bearer — 12 hour expiry',          'emerald'],
-                    ['RBAC',        `${Object.keys(ROLE_PERMS).length}+ roles configured`, 'emerald'],
-                    ['Database',    'MongoDB Atlas (cloud)',                  'emerald'],
-                    ['Chatbot',     'AI-powered + FAQ knowledge base',       'emerald'],
-                    ['Regions',     `${regions.length} of 16 registered`,   regions.length===16?'emerald':'amber'],
-                    ['Backend URL', import.meta.env.VITE_BACKEND_URL||'localhost:4000','stone'],
-                  ].map(([l,v,t])=>(
-                    <div key={l} className={`bg-${t}/5 border border-${t}/20 rounded-xl p-3`}>
-                      <div className="text-xs text-stone-400">{l}</div>
-                      <div className="font-semibold text-ink text-sm mt-0.5">{v}</div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              <Card>
-                <h3 className="font-semibold text-ink mb-4">Platform Statistics</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {[['Regions',regions.length,'navy'],['Districts',stats?.districts||0,'forest'],['Schools',stats?.schools||0,'emerald'],['Users',users.length,'amber'],['Reports',(stats?.approved_reports||0)+(stats?.pending_reports||0)+(stats?.rejected_reports||0),'stone']].map(([l,v,t])=>(
-                    <div key={l} className="text-center bg-stone-50 rounded-xl py-4">
-                      <div className={`text-2xl font-bold font-serif text-${t}`}>{v}</div>
-                      <div className="text-xs text-stone-400 mt-0.5">{l}</div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </>
-          )}
-
-          {/* ── REGIONS ── */}
-          {sec==='regions'&&(
-            <Card>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-ink">Ghana's 16 Regions</h3>
-                <Pill tone={regions.length===16?'emerald':'amber'}>{regions.length}/16 registered</Pill>
-              </div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {GHANA_REGIONS.map(name=>{
-                  const r=regions.find(rg=>rg.name===name);
-                  return (
-                    <div key={name} className={`flex items-center justify-between p-3 rounded-xl border ${r?'border-emerald/30 bg-emerald/5':'border-stone-100 bg-stone-50'}`}>
-                      <div>
-                        <div className="text-sm font-medium text-ink">{name}</div>
-                        {r&&<div className="text-xs text-stone-400">{r.district_count||0} districts · {r.capital}</div>}
-                      </div>
-                      <Pill tone={r?'emerald':'stone'}>{r?'Registered':'Not Registered'}</Pill>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
-
-          {/* ── RBAC ── */}
-          {sec==='rbac'&&(
-            <div className="space-y-4">
-              <Card>
-                <h3 className="font-semibold text-ink mb-4">Permission Matrix</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-stone-50 text-[10px] uppercase tracking-wider text-stone-400">
-                      <tr>
-                        <th className="text-left px-3 py-2.5 min-w-[160px]">Role</th>
-                        {PERM_COLS.map(c=><th key={c} className="text-center px-2 py-2.5 min-w-[80px]">{c}</th>)}
-                        <th className="text-center px-2 py-2.5">Users</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-50">
-                      {Object.entries(ROLE_PERMS).map(([role,perms])=>(
-                        <tr key={role} className="hover:bg-paper">
-                          <td className="px-3 py-2.5">
-                            <div className="font-semibold text-ink">{ROLE_LABELS[role]||role}</div>
-                            <div className="text-[9px] text-stone-300 font-mono">{role}</div>
-                          </td>
-                          {perms.map((has,i)=>(
-                            <td key={i} className="px-2 py-2.5 text-center">
-                              {has?<CheckCircle2 className="w-4 h-4 text-emerald mx-auto"/>:<div className="w-4 h-4 rounded-full border-2 border-stone-200 mx-auto"/>}
-                            </td>
-                          ))}
-                          <td className="px-2 py-2.5 text-center font-bold font-mono text-forest">{count(role)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-              {roleGroups.map(g=>(
-                <Card key={g.tier}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{backgroundColor:g.color}}>{g.tier} Tier</div>
-                    <span className="text-xs text-stone-400">{g.roles.length} roles · {g.roles.reduce((s,r)=>s+count(r),0)} active users</span>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {g.roles.map(r=>(
-                      <div key={r} className="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl">
-                        <div><div className="text-sm font-medium text-ink">{ROLE_LABELS[r]||r}</div><div className="text-[9px] text-stone-300 font-mono">{r}</div></div>
-                        <div className="text-sm font-bold text-forest">{count(r)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              ))}
+      <Modal open={!!resetModal} onClose={()=>{ setResetModal(null); setConfirmText(''); setErr(null); }} title={`Confirm: ${resetModal?.label}`} size="md">
+        {err&&<div className="mb-3 text-sm text-rust bg-rust/10 rounded-lg p-2.5">{err}</div>}
+        {resetModal&&(
+          <div className="space-y-4">
+            <div className="p-4 bg-rust/10 border-2 border-rust/30 rounded-xl">
+              <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-5 h-5 text-rust"/><span className="font-bold text-rust">This action CANNOT be undone</span></div>
+              <p className="text-sm text-stone-600">{resetModal.desc}</p>
             </div>
-          )}
-
-          {/* ── FINANCE ── */}
-          {sec==='finance'&&(
-            <Card>
-              <h3 className="font-semibold text-ink mb-4">Financial Policies</h3>
-              <div className="divide-y divide-stone-50">
-                {[
-                  ['Daily rate per pupil','GHS 2.00 (Ghana Cedi)'],
-                  ['Disbursement approval','CEO / National Director must approve before funds release'],
-                  ['Budget chain','National → Regional Allocation → District → Caterer Payment'],
-                  ['Arrears formula','Days Covered − Days Paid × Enrolled Pupils × GHS 2.00'],
-                  ['Bulk upload format','CSV: school_code, period, days_covered, days_paid, payment_date'],
-                  ['Export compliance','Ghana Audit Service compliant — PDF + Excel with full headers'],
-                  ['Fiscal year','Academic year basis (e.g. 2025/2026)'],
-                  ['Payment periods','Term 1, Term 2, Term 3, or Full Year'],
-                  ['Duplicate check','Per caterer + period — updates existing record on re-upload'],
-                  ['Currency','Ghana Cedi (GHS) — all amounts in GHS'],
-                ].map(([l,v])=>(
-                  <div key={l} className="flex items-start justify-between py-3 gap-4">
-                    <span className="text-sm text-stone-500 flex-shrink-0">{l}</span>
-                    <span className="text-sm font-semibold text-ink text-right">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* ── SECURITY ── */}
-          {sec==='security'&&(
-            <Card>
-              <h3 className="font-semibold text-ink mb-4">Security Configuration</h3>
-              <div className="space-y-2">
-                {[
-                  ['JWT Authentication',        'Active — 12h token expiry',                'emerald'],
-                  ['RBAC Enforcement',           '20 roles + scope isolation',               'emerald'],
-                  ['Password Hashing',           'bcryptjs — 10 salt rounds',                'emerald'],
-                  ['Audit Logging',              'Every action logged with timestamp + user','emerald'],
-                  ['CEO Approval Workflow',      'All disbursements require CEO sign-off',   'emerald'],
-                  ['Data Scope Isolation',       'Users only see their region/district',     'emerald'],
-                  ['Admin Password Reset',       'Senior admins only — temp password system','emerald'],
-                  ['Profile Pictures',           'Optional — server-side storage',           'emerald'],
-                  ['Multi-Factor Auth (MFA)',    'Planned — Phase 3',                        'stone'],
-                  ['Biometric Login',            'Planned — Phase 4',                        'stone'],
-                  ['Ghana Card Verification',    'Future integration',                       'stone'],
-                ].map(([l,v,t])=>(
-                  <div key={l} className={`flex items-center justify-between p-3 rounded-xl bg-${t}/5 border border-${t}/15`}>
-                    <span className="text-sm font-medium text-ink">{l}</span><Pill tone={t}>{v}</Pill>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* ── NOTIFICATIONS ── */}
-          {sec==='notifications'&&(
-            <Card>
-              <h3 className="font-semibold text-ink mb-4">Notification Rules</h3>
-              <div className="space-y-2">
-                {[
-                  ['Report submitted',          'Headmaster — immediate notification',         'emerald'],
-                  ['Report approved/rejected',  'Caterer — immediate on decision',             'emerald'],
-                  ['Disbursement requested',    'CEO / National Director — awaiting approval', 'emerald'],
-                  ['Disbursement approved',     'National Finance — ready to execute',         'emerald'],
-                  ['Chatbot question escalated','All admins — new pending question',           'emerald'],
-                  ['Payment arrears',           'DFC + RFC — weekly summary',                 'emerald'],
-                  ['Bulk upload complete',      'Uploader — immediate result',                'emerald'],
-                  ['Email notifications',       'Planned — Nodemailer SMTP',                  'stone'],
-                  ['SMS alerts (Twilio)',        'Planned — Phase 2',                          'stone'],
-                  ['Push notifications (PWA)',   'Planned — Phase 2',                          'stone'],
-                ].map(([l,v,t])=>(
-                  <div key={l} className={`flex items-center justify-between p-3 rounded-xl bg-${t}/5 border border-${t}/15`}>
-                    <span className="text-sm font-medium text-ink">{l}</span><Pill tone={t}>{v}</Pill>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* ── DATA ── */}
-          {sec==='data'&&(
-            <Card>
-              <h3 className="font-semibold text-ink mb-4">Data Management & Compliance</h3>
-              <div className="space-y-2">
-                {[
-                  ['Database',              'MongoDB Atlas — managed cloud',              'emerald'],
-                  ['Automated backups',     'MongoDB Atlas daily snapshot backups',       'emerald'],
-                  ['Audit trail',           'Full immutable log of all actions',          'emerald'],
-                  ['PDF export',            'jsPDF — GSFP branded with autotable',        'emerald'],
-                  ['Excel export',          'SheetJS XLSX — multi-sheet with summaries',  'emerald'],
-                  ['Disbursement ledger',   'Full CEO-approved financial trail',          'emerald'],
-                  ['Chatbot knowledge base','MongoDB FAQ — auto-learning from answers',   'emerald'],
-                  ['Ghana Audit Service',   'Export formats compliant with GAS standards','emerald'],
-                  ['Data Protection Act',   'Ghana DPA 2012 compliant',                  'amber'],
-                  ['Data retention',        'Indefinite — configurable per policy',       'amber'],
-                ].map(([l,v,t])=>(
-                  <div key={l} className={`flex items-center justify-between p-3 rounded-xl bg-${t}/5 border border-${t}/15`}>
-                    <span className="text-sm font-medium text-ink">{l}</span><Pill tone={t}>{v}</Pill>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
-    </>
+            <div>
+              <label className="text-sm font-medium text-stone-600 block mb-2">Type <strong className="font-mono text-rust">RESET CONFIRMED</strong> to proceed:</label>
+              <input value={confirmText} onChange={e=>setConfirmText(e.target.value)} placeholder="RESET CONFIRMED"
+                className="w-full px-4 py-3 border-2 border-stone-200 rounded-xl text-sm font-mono focus:outline-none focus:border-rust tracking-wider"/>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={()=>{ setResetModal(null); setConfirmText(''); }} disabled={busy}>Cancel</Button>
+              <button onClick={doReset} disabled={busy||confirmText!=='RESET CONFIRMED'}
+                className="px-4 py-2 bg-rust text-white rounded-xl font-bold text-sm disabled:opacity-40 hover:bg-rust/90 transition-all">
+                {busy?'Resetting...':'Confirm Reset'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
   );
 }

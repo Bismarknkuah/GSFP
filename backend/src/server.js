@@ -13,18 +13,13 @@ async function boot() {
 
   const app = express();
 
-  const allowedOrigins = (process.env.CORS_ORIGIN || '*').split(',').map(o=>o.trim()).filter(Boolean);
+  const allowedOrigins = (process.env.CORS_ORIGIN||'*').split(',').map(o=>o.trim()).filter(Boolean);
   app.use(cors({
-    origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) cb(null, true);
-      else cb(new Error(`CORS: origin ${origin} not allowed`));
-    },
-    credentials: true,
-    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
+    origin:(origin,cb)=>{ if(!origin||allowedOrigins.includes('*')||allowedOrigins.includes(origin)) cb(null,true); else cb(new Error(`CORS: ${origin} not allowed`)); },
+    credentials:true, methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders:['Content-Type','Authorization'],
   }));
   app.options('*', cors());
-
   app.use(express.json({ limit:'10mb' }));
   app.use(express.urlencoded({ extended:true, limit:'10mb' }));
   app.use('/uploads', express.static(path.join(__dirname,'..','uploads')));
@@ -56,6 +51,7 @@ async function boot() {
   app.use('/api/mfa',              require('./routes/mfa'));
   app.use('/api/enrollment',       require('./routes/enrollment'));
   app.use('/api/ghana-card',       require('./routes/ghanaCard'));
+  app.use('/api/system',           require('./routes/system'));   // ← NEW
 
   app.use((_req,res) => res.status(404).json({ error:'Route not found' }));
   app.use(errorHandler);
