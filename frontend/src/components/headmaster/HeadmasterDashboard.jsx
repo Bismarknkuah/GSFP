@@ -58,8 +58,9 @@ export default function HeadmasterDashboard({ view = 'overview' }) {
     setBusy(true); setErr(null);
     try {
       await api.reports.review(actMode._id || actMode.id, {
-        action: actForm.decision,
-        comment: actForm.comment,
+        action:   actForm.decision,
+        decision: actForm.decision,
+        comment:  actForm.comment,
       });
       setOk(`Report ${actForm.decision} successfully ✓`);
       setAct(null);

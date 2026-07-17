@@ -1,0 +1,15 @@
+[33mca0e7ae[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Update Node 20 and regenerate package-lock
+[33m254ce0c[m Fix: update package-lock.json and Node engine to 20
+[33ma5ff308[m Full update: 3-tier analytics, payment chain, school requests, monitoring reminders
+[33m73253e2[m Full workflow: caterer preview, payment chain, school requests, monitoring reminders
+[33ma46c244[m Fix EnrollmentRequest _id String type - resolve BSONError
+[33m11f5694[m Fix headmaster review buttons always visible
+[33md0a33e4[m Add dual-approval reset, bulk upload, enrollment fix, differentiated monitoring
+[33m330a5e6[m Add system reset, bulk upload portal, enrollment fix, differentiated monitoring
+[33m224d814[m Fix EnrollmentRequest _id type to String
+[33mfe5db77[m Fix: headmaster approvals, enrollment workflow, differentiated monitoring dashboards
+[33m4121242[m Add enrollment workflow, fix headmaster approvals, differentiate monitoring dashboards
+[33md80ae91[m Fix api client - add listPending and missing methods
+[33me27a88a[m Fix seed.js - correct all usernames, passwords and roles
+[33mf35109a[m Fix backend package.json for Railway deployment
+[33mc6edc1f[m GSFP v2 - Complete rebuild with all dashboards
