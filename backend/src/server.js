@@ -8,42 +8,28 @@ const { seed   } = require('./db/seed');
 const errorHandler = require('./middleware/error');
 
 async function boot() {
-  // ── Database connection ─────────────────────────────────────
-  try {
-    await connect();
-    await seed();
-  } catch(e) {
-    console.error('[boot] Fatal error:', e);
-    process.exit(1);
-  }
+  try { await connect(); await seed(); }
+  catch(e) { console.error('[boot] Fatal error:', e); process.exit(1); }
 
   const app = express();
 
-  // ── CORS (Updated & Improved for Vercel) ────────────────────
-  const allowedOrigins = [
-    'https://gsfp-ten.vercel.app',
-    'https://gsfp-git-main-desward-technology-s-projects.vercel.app',
-    'https://gsfp-pkz9q24a3-desward-technology-s-projects.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174'
-  ];
+  // ── CORS (supports comma-separated origins) ─────────────────
+  const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+    .split(',').map(o => o.trim()).filter(Boolean);
 
   app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
-        callback(null, true);
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        cb(null, true);
       } else {
-        console.error(`[CORS] Blocked origin: ${origin}`);
-        callback(new Error(`CORS: origin ${origin} not allowed`));
+        console.log(`[error] CORS: ${origin} not allowed`);
+        cb(new Error(`CORS: ${origin} not allowed`));
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposedHeaders: ['Content-Length', 'X-RateLimit-Limit', 'X-RateLimit-Remaining']
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization'],
   }));
-
   app.options('*', cors());
 
   // ── Body parsers ────────────────────────────────────────────
@@ -53,7 +39,7 @@ async function boot() {
   // ── Static uploads ──────────────────────────────────────────
   app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-  // ── Request logger (dev only) ────────────────────────────────
+  // ── Request logger (dev only) ───────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
     app.use((req, _res, next) => {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -61,7 +47,7 @@ async function boot() {
     });
   }
 
-  // ── Health check ─────────────────────────────────────────────
+  // ── Health check ────────────────────────────────────────────
   app.get('/health', (_req, res) => res.json({
     status: 'ok',
     service: 'GSFP v2',
@@ -69,11 +55,7 @@ async function boot() {
     time: new Date().toISOString(),
   }));
 
-  // ── API Routes ───────────────────────────────────────────────
-  app.use('/api/timetable',        require('./routes/timetable'));
-  app.use('/api/expenditure',      require('./routes/expenditure'));
-  app.use('/api/school-requests',  require('./routes/schoolRequests'));
-  app.use('/api/payment-approval', require('./routes/paymentApproval'));
+  // ── API Routes ──────────────────────────────────────────────
   app.use('/api/auth',             require('./routes/auth'));
   app.use('/api/password',         require('./routes/password'));
   app.use('/api/regions',          require('./routes/regions'));
@@ -95,25 +77,25 @@ async function boot() {
   app.use('/api/mfa',              require('./routes/mfa'));
   app.use('/api/enrollment',       require('./routes/enrollment'));
   app.use('/api/ghana-card',       require('./routes/ghanaCard'));
+  app.use('/api/school-requests',  require('./routes/schoolRequests'));
+  app.use('/api/payment-approval', require('./routes/paymentApproval'));
+  app.use('/api/timetable',        require('./routes/timetable'));
+  app.use('/api/expenditure',      require('./routes/expenditure'));
 
-  // ── 404 handler ──────────────────────────────────────────────
-  app.use((req, res) => {
-    res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
-  });
+  // ── 404 handler ─────────────────────────────────────────────
+  app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 
-  // ── Global error handler ─────────────────────────────────────
+  // ── Global error handler ────────────────────────────────────
   app.use(errorHandler);
 
-  // ── Start server ─────────────────────────────────────────────
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
     console.log('='.repeat(64));
     console.log('  Ghana School Feeding Programme — Management System v2');
     console.log(`  Listening on http://localhost:${PORT}`);
     console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`  Allowed Origins: ${allowedOrigins.length}`);
+    console.log(`  CORS origin: ${process.env.CORS_ORIGIN || '*'}`);
     console.log('='.repeat(64));
   });
 }
-
 boot();

@@ -108,6 +108,8 @@ function AppContent() {
       case 'users':            return <UniversalUserManager/>;
       case 'finance':          return <FinancePortal/>;
       case 'reports':          return <ReportsView/>;
+      case 'expenses':
+        return <CatererDashboard view="expenses"/>;
       case 'payments':
         if (user.role === 'caterer') return <CatererDashboard view="payments"/>;
         if (FINANCE_ROLES.includes(user.role)) return <FinanceDashboard onNavigate={navigate}/>;
