@@ -2,13 +2,14 @@ const Payment  = require('../models/Payment');
 const AuditLog = require('../models/AuditLog');
 const { newId, nowISO } = require('../utils/ids');
 
-// District Finance Officer — approve days cooked and submit to region
+// District Finance — approve days cooked, forward to Regional
 exports.districtApprove = async (req, res) => {
   const { days_approved, comment } = req.body;
   const payment = await Payment.findById(req.params.id);
   if (!payment) return res.status(404).json({ error:'Payment not found' });
 
-  const school = await require('../models/School').findById(payment.school_id);
+  const School   = require('../models/School');
+  const school   = await School.findById(payment.school_id).catch(()=>null);
   const enrolled = school?.enrolled || 0;
   const rate     = payment.rate_per_student || 2.00;
   const days     = Number(days_approved) || payment.days_paid;
@@ -19,7 +20,7 @@ exports.districtApprove = async (req, res) => {
   payment.district_finance_days        = days;
   payment.district_finance_comment     = comment||'';
   payment.days_paid                    = days;
-  payment.days_arrears                 = payment.days_covered - days;
+  payment.days_arrears                 = Math.max(0, payment.days_covered - days);
   payment.amount_paid                  = days * enrolled * rate;
   payment.arrears_amount               = payment.days_arrears * enrolled * rate;
   payment.status                       = 'pending_regional';
@@ -27,11 +28,11 @@ exports.districtApprove = async (req, res) => {
   await payment.save();
   await AuditLog.create({ _id:newId('aud'), timestamp:nowISO(), user_id:String(req.user._id||req.user.id),
     user_name:req.user.name, user_role:req.user.role, action:'PAYMENT_DISTRICT_APPROVED',
-    target:payment._id, details:`District approved ${days} days for payment ${payment._id}. ${comment||''}`, level:'info' });
+    target:String(payment._id), details:`District approved ${days} days. ${comment||''}`, level:'info' });
   res.json({ payment });
 };
 
-// Regional Finance — approve and forward to national
+// Regional Finance — forward to National
 exports.regionalApprove = async (req, res) => {
   const { comment } = req.body;
   const payment = await Payment.findById(req.params.id);
@@ -47,11 +48,11 @@ exports.regionalApprove = async (req, res) => {
   await payment.save();
   await AuditLog.create({ _id:newId('aud'), timestamp:nowISO(), user_id:String(req.user._id||req.user.id),
     user_name:req.user.name, user_role:req.user.role, action:'PAYMENT_REGIONAL_APPROVED',
-    target:payment._id, details:`Regional approved payment ${payment._id}. ${comment||''}`, level:'info' });
+    target:String(payment._id), details:`Regional approved. ${comment||''}`, level:'info' });
   res.json({ payment });
 };
 
-// National Finance — final approval, visible to caterer
+// National Finance — final, visible to caterer
 exports.nationalApprove = async (req, res) => {
   const { comment } = req.body;
   const payment = await Payment.findById(req.params.id);
@@ -63,16 +64,16 @@ exports.nationalApprove = async (req, res) => {
   payment.national_finance_approved_at = new Date();
   payment.national_finance_comment     = comment||'';
   payment.status                       = payment.days_arrears > 0 ? 'partial' : 'fully-paid';
-  payment.visible_to_caterer           = true;  // Now shows on caterer dashboard
+  payment.visible_to_caterer           = true;
 
   await payment.save();
   await AuditLog.create({ _id:newId('aud'), timestamp:nowISO(), user_id:String(req.user._id||req.user.id),
     user_name:req.user.name, user_role:req.user.role, action:'PAYMENT_NATIONAL_APPROVED',
-    target:payment._id, details:`National final approval for payment ${payment._id}. ${comment||''}`, level:'info' });
+    target:String(payment._id), details:`National final approval. ${comment||''}`, level:'info' });
   res.json({ payment });
 };
 
-// Reject at any level
+// Reject at any level — resets chain
 exports.reject = async (req, res) => {
   const { comment } = req.body;
   const payment = await Payment.findById(req.params.id);
@@ -82,19 +83,20 @@ exports.reject = async (req, res) => {
   payment.district_finance_approved = false;
   payment.regional_finance_approved = false;
   payment.national_finance_approved = false;
+  payment.visible_to_caterer        = false;
 
   await payment.save();
   await AuditLog.create({ _id:newId('aud'), timestamp:nowISO(), user_id:String(req.user._id||req.user.id),
     user_name:req.user.name, user_role:req.user.role, action:'PAYMENT_REJECTED',
-    target:payment._id, details:`Payment rejected by ${req.user.name}. ${comment||''}`, level:'warning' });
+    target:String(payment._id), details:`Rejected by ${req.user.name}. ${comment||''}`, level:'warning' });
   res.json({ payment });
 };
 
-// Send reminder (monitoring officer)
+// Monitoring reminder
 exports.sendReminder = async (req, res) => {
   const { caterer_id, message } = req.body;
   await AuditLog.create({ _id:newId('aud'), timestamp:nowISO(), user_id:String(req.user._id||req.user.id),
     user_name:req.user.name, user_role:req.user.role, action:'REMINDER_SENT',
-    target:caterer_id||'all', details:`Reminder sent by ${req.user.name}: ${message||'Please submit your daily feeding report'}`, level:'info' });
-  res.json({ ok:true, message:'Reminder sent successfully' });
+    target:caterer_id||'all', details:message||'Please submit your daily feeding report', level:'info' });
+  res.json({ ok:true, message:'Reminder sent' });
 };

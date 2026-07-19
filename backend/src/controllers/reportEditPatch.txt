@@ -1,0 +1,41 @@
+════════════════════════════════════════════════════════════════
+PATCH for backend/src/controllers/reportController.js (or reports.js route)
+════════════════════════════════════════════════════════════════
+
+1) ALLOW PREVIOUS-DATE SUBMISSION
+Find any validation like:
+    if (date !== today) return res.status(400)...
+REMOVE it or replace with a 30-day window:
+    const diffDays = (Date.now() - new Date(date))/(86400000);
+    if (diffDays < 0)  return res.status(400).json({ error:'Date cannot be in the future' });
+    if (diffDays > 30) return res.status(400).json({ error:'Reports older than 30 days need District approval' });
+
+2) EDIT & RESUBMIT (add this handler + route)
+    // PATCH /api/reports/:id  — caterer edits own pending/rejected report
+    exports.update = async (req, res) => {
+      const Report = require('../models/Report');
+      const r = await Report.findById(req.params.id);
+      if (!r) return res.status(404).json({ error:'Report not found' });
+      if (String(r.caterer_id) !== String(req.user._id||req.user.id))
+        return res.status(403).json({ error:'Not your report' });
+      if (!['pending','rejected'].includes(r.status))
+        return res.status(400).json({ error:'Only pending or rejected reports can be edited' });
+      const allowed = ['food_type','students_fed','time_ready','time_served','notes','date'];
+      allowed.forEach(k => { if (req.body[k] !== undefined) r[k] = req.body[k]; });
+      r.status = 'pending';                    // resubmission resets to pending
+      r.headmaster_comment = null;
+      r.resubmitted_at = new Date();
+      await r.save();
+      res.json({ report:r, resubmitted:true });
+    };
+Route:  router.patch('/:id', authenticate, catererOnly, c.update);
+
+3) TWO PHOTOS PER REPORT
+In your multer setup change single to array:
+    upload.single('photo')  →  upload.array('photos', 2)
+In the create handler:
+    const photos = (req.files||[]).map(f => '/uploads/'+f.filename);
+    // store in report: photos: photos   (add `photos: [String]` to Report schema)
+Frontend sends: fd.append('photos', photo1); fd.append('photos', photo2);
+Optionally enforce: if (photos.length < 2) return res.status(400).json({ error:'Please attach 2 photos of the food served' });
+════════════════════════════════════════════════════════════════

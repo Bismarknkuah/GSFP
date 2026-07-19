@@ -70,6 +70,8 @@ async function boot() {
   }));
 
   // ── API Routes ───────────────────────────────────────────────
+  app.use('/api/timetable',        require('./routes/timetable'));
+  app.use('/api/expenditure',      require('./routes/expenditure'));
   app.use('/api/school-requests',  require('./routes/schoolRequests'));
   app.use('/api/payment-approval', require('./routes/paymentApproval'));
   app.use('/api/auth',             require('./routes/auth'));

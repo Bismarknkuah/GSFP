@@ -1,0 +1,4 @@
+ADD these two lines to backend/src/server.js in the routes section:
+
+  app.use('/api/timetable',   require('./routes/timetable'));
+  app.use('/api/expenditure', require('./routes/expenditure'));
