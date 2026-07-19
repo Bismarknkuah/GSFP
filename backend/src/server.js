@@ -19,22 +19,31 @@ async function boot() {
 
   const app = express();
 
-  // ── CORS ────────────────────────────────────────────────────
-  const allowedOrigins = (process.env.CORS_ORIGIN || '*')
-    .split(',').map(o => o.trim()).filter(Boolean);
+  // ── CORS (Updated & Improved for Vercel) ────────────────────
+  const allowedOrigins = [
+    'https://gsfp-ten.vercel.app',
+    'https://gsfp-git-main-desward-technology-s-projects.vercel.app',
+    'https://gsfp-pkz9q24a3-desward-technology-s-projects.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174'
+  ];
 
   app.use(cors({
-    origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-        cb(null, true);
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+        callback(null, true);
       } else {
-        cb(new Error(`CORS: origin ${origin} not allowed`));
+        console.error(`[CORS] Blocked origin: ${origin}`);
+        callback(new Error(`CORS: origin ${origin} not allowed`));
       }
     },
     credentials: true,
-    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Length', 'X-RateLimit-Limit', 'X-RateLimit-Remaining']
   }));
+
   app.options('*', cors());
 
   // ── Body parsers ────────────────────────────────────────────
@@ -100,7 +109,7 @@ async function boot() {
     console.log('  Ghana School Feeding Programme — Management System v2');
     console.log(`  Listening on http://localhost:${PORT}`);
     console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`  CORS origin: ${process.env.CORS_ORIGIN || '*'}`);
+    console.log(`  Allowed Origins: ${allowedOrigins.length}`);
     console.log('='.repeat(64));
   });
 }
