@@ -47,6 +47,32 @@ export default function HeadmasterDashboard({ view = 'overview' }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Menu confirmation (food timetable tick) ──
+  const BASE_URL = import.meta.env.VITE_BACKEND_URL || '';
+  const authHdr  = () => ({ 'Content-Type':'application/json', Authorization:`Bearer ${localStorage.getItem('gsfp.token')}` });
+  const [todayMenu,   setTodayMenu]   = useState(null);
+  const [menuConfirm, setMenuConfirm] = useState(null);
+  const [servedInput, setServedInput] = useState('');
+  const [menuBusy,    setMenuBusy]    = useState(false);
+
+  useEffect(() => {
+    const day = new Date().toISOString().slice(0,10);
+    fetch(`${BASE_URL}/api/timetable/today`, { headers:authHdr() })
+      .then(r=>r.ok?r.json():null).then(d=>setTodayMenu(d?.scheduled||null)).catch(()=>{});
+    fetch(`${BASE_URL}/api/timetable/confirmations?date=${day}`, { headers:authHdr() })
+      .then(r=>r.ok?r.json():null).then(d=>setMenuConfirm(d?.confirmations?.[0]||null)).catch(()=>{});
+  }, []);
+
+  const confirmMenu = async (matched) => {
+    setMenuBusy(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/timetable/confirm`, { method:'POST', headers:authHdr(),
+        body:JSON.stringify({ matched, served_food: matched ? undefined : servedInput }) });
+      const d = await res.json();
+      if (res.ok) setMenuConfirm(d.confirmation);
+    } catch{} finally { setMenuBusy(false); }
+  };
+
   // All pending reports (status === 'pending')
   const pendingReports = reports.filter(r => r.status === 'pending');
 
@@ -277,6 +303,45 @@ export default function HeadmasterDashboard({ view = 'overview' }) {
           <div className="font-bold text-lg text-stone-400">No caterer report submitted today yet</div>
         </Card>
       )}
+
+      {/* ── FOOD TIMETABLE CONFIRMATION ── */}
+      <Card className={menuConfirm ? (menuConfirm.matched ? 'border-2 border-emerald/30 bg-emerald/5' : 'border-2 border-amber/30 bg-amber/5') : 'border-2 border-navy/20 bg-navy/5'}>
+        <div className="text-xs text-stone-400 uppercase tracking-wider mb-1">📋 Menu Confirmation — Today</div>
+        {todayMenu ? (
+          <div>
+            <div className="text-sm text-stone-500">Scheduled by District Coordinator:</div>
+            <div className="font-bold text-lg text-ink mb-2">{todayMenu}</div>
+            {menuConfirm ? (
+              <div className={`text-sm font-semibold ${menuConfirm.matched ? 'text-emerald' : 'text-amber'}`}>
+                {menuConfirm.matched
+                  ? '✓ Confirmed — served as scheduled'
+                  : `⚠ Different food served: "${menuConfirm.served_food}"`}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs text-stone-500">Was this food served today? Tick to confirm:</div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={()=>confirmMenu(true)} disabled={menuBusy}
+                    className="px-4 py-2 bg-emerald text-white text-sm rounded-xl font-bold hover:bg-emerald/90 disabled:opacity-50">
+                    ✓ Yes, served as scheduled
+                  </button>
+                  <div className="flex gap-2 items-center">
+                    <input value={servedInput} onChange={e=>setServedInput(e.target.value)}
+                      placeholder="Different? Type what was served..."
+                      className="px-3 py-2 border border-stone-200 rounded-xl text-xs w-52"/>
+                    <button onClick={()=>servedInput.trim()&&confirmMenu(false)} disabled={menuBusy||!servedInput.trim()}
+                      className="px-3 py-2 bg-amber text-white text-xs rounded-xl font-bold hover:bg-amber/90 disabled:opacity-40">
+                      Report Different
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-stone-400">No menu scheduled for today — District Coordinator has not posted this month's timetable yet.</div>
+        )}
+      </Card>
 
       {/* Pending reports inline on overview */}
       {pendingReports.length > 0 && (

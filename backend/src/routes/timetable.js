@@ -8,7 +8,10 @@ const dfcOnly = (req,res,next) => {
   next();
 };
 
-router.get('/',     authenticate, c.get);
-router.get('/all',  authenticate, c.list);
-router.post('/',    authenticate, dfcOnly, c.upsert);
+router.get('/',              authenticate, c.get);
+router.get('/all',           authenticate, c.list);
+router.get('/today',         authenticate, c.todayMenu);
+router.get('/confirmations', authenticate, c.confirmations);
+router.post('/confirm',      authenticate, c.confirm);
+router.post('/',             authenticate, dfcOnly, c.upsert);
 module.exports = router;

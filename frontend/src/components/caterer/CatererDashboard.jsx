@@ -146,6 +146,57 @@ export default function CatererDashboard({ view = 'overview' }) {
     loadExp();
   };
 
+  // ── PRINT & EXPORT helpers ──
+  const printHTML = (title, bodyHtml) => {
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>${title}</title><style>
+      body{font-family:Georgia,serif;padding:32px;color:#1a1a1a}
+      h1{color:#0d3321;border-bottom:3px solid #C9882C;padding-bottom:8px;font-size:22px}
+      .sub{color:#666;font-size:12px;margin-bottom:20px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{background:#0d3321;color:#fff;padding:8px;text-align:left}
+      td{padding:7px 8px;border-bottom:1px solid #ddd}
+      tr:nth-child(even){background:#faf7f2}
+      .total{font-weight:bold;background:#C9882C22}
+      .footer{margin-top:30px;font-size:10px;color:#999;text-align:center}
+    </style></head><body>
+      <h1>🏛 Ghana School Feeding Programme</h1>
+      <div class="sub">${title} · ${school?.name||''} · ${user.name} · Printed ${new Date().toLocaleString('en-GH')}</div>
+      ${bodyHtml}
+      <div class="footer">GSFP National Management System v2 · Republic of Ghana · Desward Technology</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(()=>{ w.print(); }, 350);
+  };
+
+  const printExpenses = () => {
+    const total = exps.reduce((s,e)=>s+e.amount,0);
+    const rows = exps.map(e=>`<tr><td>${e.date}</td><td>${e.category}</td><td>${e.item}</td><td>${e.notes||''}</td><td style="text-align:right">${e.amount.toFixed(2)}</td></tr>`).join('');
+    printHTML(`Expenditure Report — ${expMonth}`, `
+      <table><thead><tr><th>Date</th><th>Category</th><th>Item</th><th>Notes</th><th style="text-align:right">Amount (GHS)</th></tr></thead>
+      <tbody>${rows}<tr class="total"><td colspan="4">TOTAL</td><td style="text-align:right">GHS ${total.toFixed(2)}</td></tr></tbody></table>
+      ${guide?`<p style="margin-top:16px;font-size:12px"><b>Budget Summary:</b> Expected income GHS ${guide.expected_income?.toFixed(2)} · Spent GHS ${guide.total_spent?.toFixed(2)} · Balance GHS ${guide.balance?.toFixed(2)} (${guide.status?.replace('_',' ').toUpperCase()})</p>`:''}`);
+  };
+
+  const exportExpensesCSV = () => {
+    const csv = ['date,category,item,notes,amount', ...exps.map(e=>`${e.date},${e.category},"${e.item}","${e.notes||''}",${e.amount}`)].join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+    a.download = `expenses_${expMonth}.csv`; a.click();
+  };
+
+  const printTimetable = () => {
+    if (!tt) return;
+    const rows = ['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day=>{
+      const items = (tt.menu||[]).filter(m=>m.day===day)
+        .map(m=>`${m.week>0?`[W${m.week}] `:''}${m.food}${m.notes?` (${m.notes})`:''}`).join('<br/>');
+      return `<tr><td style="font-weight:bold;width:120px">${day}</td><td>${items||'—'}</td></tr>`;
+    }).join('');
+    printHTML(`Food Timetable — ${ttMonth}`, `
+      <table><thead><tr><th>Day</th><th>Menu</th></tr></thead><tbody>${rows}</tbody></table>
+      <p style="font-size:11px;color:#666;margin-top:12px">Posted by ${tt.posted_by_name||'District Feeding Coordinator'} · Serve exactly what is scheduled.</p>`);
+  };
+
   const todayReport   = reports.find(r=>r.date===today()&&r.status!=='rejected');
   const rejectedToday = reports.find(r=>r.date===today()&&r.status==='rejected');
   const approved      = reports.filter(r=>r.status==='approved');
@@ -217,6 +268,10 @@ export default function CatererDashboard({ view = 'overview' }) {
             <div className="flex items-center gap-2">
               <input type="month" value={expMonth} onChange={e=>setExpMonth(e.target.value)}
                 className="text-xs border border-stone-200 rounded-lg px-2 py-1.5"/>
+              <button onClick={printExpenses} disabled={exps.length===0}
+                className="px-2.5 py-1.5 border border-stone-200 text-stone-600 text-xs rounded-lg hover:bg-stone-50 disabled:opacity-30">🖨 Print</button>
+              <button onClick={exportExpensesCSV} disabled={exps.length===0}
+                className="px-2.5 py-1.5 border border-stone-200 text-stone-600 text-xs rounded-lg hover:bg-stone-50 disabled:opacity-30">⬇ CSV</button>
               <Button icon={Plus} size="sm" onClick={()=>{ setExpModal(true); setErr(null); }}>Add</Button>
             </div>
           </div>
@@ -439,8 +494,12 @@ export default function CatererDashboard({ view = 'overview' }) {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-ink flex items-center gap-2"><CalendarDays className="w-4 h-4 text-forest"/>Monthly Food Timetable</h3>
-          <input type="month" value={ttMonth} onChange={e=>setTtMonth(e.target.value)}
-            className="text-xs border border-stone-200 rounded-lg px-2 py-1.5"/>
+          <div className="flex items-center gap-2">
+            <input type="month" value={ttMonth} onChange={e=>setTtMonth(e.target.value)}
+              className="text-xs border border-stone-200 rounded-lg px-2 py-1.5"/>
+            <button onClick={printTimetable} disabled={!tt}
+              className="px-2.5 py-1.5 border border-stone-200 text-stone-600 text-xs rounded-lg hover:bg-stone-50 disabled:opacity-30">🖨 Print</button>
+          </div>
         </div>
         {!tt ? (
           <p className="text-sm text-stone-300 text-center py-6">
